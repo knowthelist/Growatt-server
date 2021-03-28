@@ -46,12 +46,24 @@ use Net::MQTT::Simple;
 use IO::Socket::INET;
 use IO::Select;
 use IO::Handle;
+use Proc::Daemon;
+
+use constant {
+   MSG_TYPE_ANNOUNCE    =>  0x03,
+   MSG_TYPE_DATA        =>  0x04,
+   MSG_TYPE_PING        =>  0x16,
+   MSG_TYPE_CONFIG      =>  0x18,
+   MSG_TYPE_QUERY       =>  0x19,
+   MSG_TYPE_REBOOT      =>  0x20,
+   MSG_TYPE_ENERGY      =>  0x50,
+};
 
 ################ Common stuff ################
 
 # Command line options.
 my $local_port  = 5279;		# local port.
 my $timeout;		        	# 30 minutes
+my $is_deamon = 0;
 my $debug = 0;			      # debugging (currently default)
 
 # Process command line options.
@@ -69,17 +81,13 @@ my $mqtt_username = '';
 my $mqtt_password = '';
 my $mqtt_client_id_prefix = 'PV_GROWATT_';
 
-################ The Process ################
+################ Deamonize ################
 
-use constant {
-   MSG_TYPE_ANNOUNCE    =>  0x03,
-   MSG_TYPE_DATA        =>  0x04,
-   MSG_TYPE_PING        =>  0x16,
-   MSG_TYPE_CONFIG      =>  0x18,
-   MSG_TYPE_QUERY       =>  0x19,
-   MSG_TYPE_REBOOT      =>  0x20,
-   MSG_TYPE_ENERGY      =>  0x50,
-};
+my $continue = 1;
+if ($is_deamon) {
+  Proc::Daemon::Init;
+  $SIG{TERM} = sub { $continue = 0 };
+}
 
 ################ Main Loop ################
 
@@ -98,7 +106,7 @@ $server = new_server( '0.0.0.0', $local_port );
 $ioset->add($server);
 
 my $busy;
-while ( 1 ) {
+while ( $continue ) {
     my @sockets = $ioset->can_read($timeout);
     unless ( @sockets ) {
       if ( ( $busy ) ) {
@@ -501,6 +509,7 @@ sub app_options {
     if ( !GetOptions(
 		     'listen=i' => \$local_port,
 		     'timeout=i' => \$timeout,
+         'inetd|systemd' => \$is_deamon,
 		     'help|?'	=> \$help,
 		     'debug=i'	=> \$debug,
 		    ) or $help )
@@ -519,6 +528,7 @@ sub app_usage {
 Usage: $0 [options]
     --listen=NNNN	Local port to listen to (must be $local_port)
     --timeout=NNN	Timeout
+    --inetd  --systemd	Running from inetd/systemd
     --help		This message
     --debug=N		More verbose information
  
