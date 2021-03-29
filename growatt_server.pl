@@ -47,15 +47,16 @@ use IO::Socket::INET;
 use IO::Select;
 use IO::Handle;
 use Proc::Daemon;
+use POSIX qw/strftime/;
 
 use constant {
-   MSG_TYPE_ANNOUNCE    =>  0x03,
-   MSG_TYPE_DATA        =>  0x04,
-   MSG_TYPE_PING        =>  0x16,
-   MSG_TYPE_CONFIG      =>  0x18,
-   MSG_TYPE_QUERY       =>  0x19,
-   MSG_TYPE_REBOOT      =>  0x20,
-   MSG_TYPE_ENERGY      =>  0x50,
+   MSG_TYPE_ANNOUNCE      =>  0x03,
+   MSG_TYPE_DATA          =>  0x04,
+   MSG_TYPE_PING          =>  0x16,
+   MSG_TYPE_CONFIG        =>  0x18,
+   MSG_TYPE_QUERY         =>  0x19,
+   MSG_TYPE_REBOOT        =>  0x20,
+   MSG_TYPE_BUFFERED_DATA =>  0x50,
 };
 
 ################ Common stuff ################
@@ -86,7 +87,10 @@ my $mqtt_client_id_prefix = 'PV_GROWATT_';
 my $continue = 1;
 if ($is_deamon) {
   Proc::Daemon::Init;
-  $SIG{TERM} = sub { $continue = 0 };
+  $SIG{TERM} = sub { 
+    print "TERM received";
+    $continue = 0 
+  };
 }
 
 ################ Main Loop ################
@@ -110,7 +114,7 @@ while ( $continue ) {
     my @sockets = $ioset->can_read($timeout);
     unless ( @sockets ) {
       if ( ( $busy ) ) {
-          print( "==== ", ts(), "TIMEOUT -- Reloading ====\n\n" );
+          print( "==== ", ts(), "\tTIMEOUT -- Reloading ====\n\n" );
           exit 0;
       }
       else {
@@ -216,7 +220,7 @@ sub split_message {
             $$bufref = substr($$bufref, $size + 6);
             return $ret_value; 
         } else {
-            print("Invalid message, expected " . $size . ", got " + length($$bufref) - 5);
+            print("Invalid message, expected " . $size . ", got " . $buffer_length - 5);
             $$bufref = "";
             return;
         }
@@ -283,7 +287,7 @@ sub process_message {
         ? create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0))
         : (
           create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0)),
-          create_reply(MSG_TYPE_QUERY, $message, pack("A[10]c*", $request->{serial}, 0x00, 0x04, 0x00, 0x1F))
+          create_reply(MSG_TYPE_QUERY, $message, pack("A[10]C*", $request->{serial}, 0x00, 0x04, 0x00, 0x1F))
           );
     }
 
@@ -292,7 +296,10 @@ sub process_message {
       my $request = decode_query_request($message); 
         
       print( "CONFIG of ", $request->{serial}, "\t", sprintf("0x%02X", $request->{config_id}), "\t", $request->{config_value}, "\n") if $debug;
-
+      if ( $request->{config_id} == 0x1F ) {
+        my $date = strftime "%Y-%m-%d %H:%M:%S", localtime time;
+        return create_reply(MSG_TYPE_CONFIG, $message, pack("A[10]CCCCA*", $request->{serial}, 0x0, 0x1f, 0x0, length($date), $date));
+      }
       return;
     }
 
@@ -306,6 +313,17 @@ sub process_message {
       publish_MQTT($request);
 
       return create_reply(MSG_TYPE_DATA, $message, pack("C", 0x0))
+    }
+
+    # PV Buffered DATA
+    if ( $message->{type} == MSG_TYPE_BUFFERED_DATA) {
+      my $request = decode_data_request($message); 
+      
+      print( $ts, "\t", "== received BUFFERED_DATA from ", $request->{serial}, ", sending reply ==\n\n" ) if $debug;
+
+      print_pv_data($request);
+
+      return create_reply(MSG_TYPE_BUFFERED_DATA, $message, pack("C", 0x0))
     }
 
     # Ignore config messages.
