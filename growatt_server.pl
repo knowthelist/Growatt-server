@@ -48,6 +48,7 @@ use IO::Select;
 use IO::Handle;
 use Proc::Daemon;
 use POSIX qw/strftime/;
+use Time::Local;
 
 use constant {
    MSG_TYPE_ANNOUNCE      =>  0x03,
@@ -91,6 +92,10 @@ if ($is_deamon) {
     print "TERM received";
     $continue = 0 
   };
+
+  open(SYSLOG, "| /usr/bin/logger -t growatt") or die( "syslog problem $!" );
+  *STDERR = *SYSLOG;
+  autoflush STDERR 1;
 }
 
 ################ Main Loop ################
@@ -113,12 +118,12 @@ my $busy;
 while ( $continue ) {
     my @sockets = $ioset->can_read($timeout);
     unless ( @sockets ) {
-      if ( ( $busy ) ) {
-          print( "==== ", ts(), "\tTIMEOUT -- Reloading ====\n\n" );
-          exit 0;
+      if ( !$continue ) {
+          print( "==== ", ts(), "\tTIMEOUT -- TERMINATING ====\n\n" );
+          exit 1;
       }
       else {
-          print( "==== ", ts(), "\tTIMEOUT ====\n\n" );
+          print( "==== ", ts(), "\tTIMEOUT -- RETRY ====\n\n" );
           next;
       }
     }
@@ -281,26 +286,35 @@ sub process_message {
     # ANNOUNCE
     if ( $message->{type} == MSG_TYPE_ANNOUNCE ) {
       my $request = decode_announce_request($message); 
+      my @reply = ();
       print( $ts, "\t", "== received ANNOUNCE from ", $request->{serial}, " for inverter ", $request->{inverter},
              ", sending reply ==\n\n" ) if $debug;
-      return $identified
-        ? create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0))
-        : (
-          create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0)),
-          create_reply(MSG_TYPE_QUERY, $message, pack("A[10]C*", $request->{serial}, 0x00, 0x04, 0x00, 0x1F))
-          );
+      print "time diff:", $request->{time_diffence} ,"\n"  if $debug > 2;
+
+      if ( $request->{time_diffence} > 60 ) {
+        print "diff > 60 => correct time on client now.\n"  if $debug > 2;
+        my $date = strftime "%Y-%m-%d %H:%M:%S", localtime time;
+        push @reply, create_reply(MSG_TYPE_CONFIG, $message, pack("A[10]CCCCA*", $request->{serial}, 0x0, 0x1f, 0x0, length($date), $date));
+      }
+
+      if ( $identified ) {
+        push @reply, create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0));
+      } else {
+        push @reply, create_reply(MSG_TYPE_ANNOUNCE, $message, pack("C", 0x0));
+        push @reply, create_reply(MSG_TYPE_QUERY, $message, pack("A[10]C*", $request->{serial}, 0x00, 0x04, 0x00, 0x1F));
+      }
+
+      return @reply;
     }
 
     # QUERY reply (the requested CONFIGs)
     if ( $message->{type} == MSG_TYPE_QUERY ) {
       my $request = decode_query_request($message); 
-        
+      $identified++;
+
       print( "CONFIG of ", $request->{serial}, "\t", sprintf("0x%02X", $request->{config_id}), "\t", $request->{config_value}, "\n") if $debug;
-      if ( $request->{config_id} == 0x1F ) {
-        my $date = strftime "%Y-%m-%d %H:%M:%S", localtime time;
-        return create_reply(MSG_TYPE_CONFIG, $message, pack("A[10]CCCCA*", $request->{serial}, 0x0, 0x1f, 0x0, length($date), $date));
-      }
-      return;
+
+      return; # ignore
     }
 
     # PV DATA
@@ -326,13 +340,6 @@ sub process_message {
       return create_reply(MSG_TYPE_BUFFERED_DATA, $message, pack("C", 0x0))
     }
 
-    # Ignore config messages.
-    if ( $message->{type} == MSG_TYPE_CONFIG ) {
-      $identified++;
-      print(  $ts, "\t", "== CONFIG ==\n\n") if $debug;
-      return;
-    }
-
     # Unhandled.
     print( $ts, "\t", "== unhandled message ==\n\n" ) if $debug;
     return;
@@ -350,10 +357,16 @@ sub decode_ping_request {
 sub decode_announce_request {
     my ( $message ) = @_;
     my ( $serial, $inverter ) = unpack("a10 x20 a10", $message->{data});
+    my ( $year, $month, $day ) = unpack("nnn", substr($message->{data}, 161));
+    my ( $hour, $min, $sec ) = unpack("nnn", substr($message->{data}, 167)); 
+    my @tm = localtime(time);
+    my $now = timelocal( $tm[0], $tm[1], $tm[2], $tm[3], $tm[4], 1900 + $tm[5] );   
+    my $time = timelocal( $sec, $min, $hour, $day, $month - 1, $year );
 
     return { 
 	    serial => $serial,
-      inverter => $inverter
+      inverter => $inverter,
+      time_diffence => abs($now - $time)
     };
 }
 
