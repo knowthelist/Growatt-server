@@ -10,9 +10,11 @@ cd Growatt-server
 ```
 If not done before, you need to install some modules
 
+```bash
 sudo cpanm Net::MQTT::Simple
 sudo cpanm Net::MQTT::Constants
 sudo cpanm Data::Hexify
+```
 
 ## Usage
 
