@@ -16,16 +16,21 @@ sudo cpanm Data::Hexify
 
 ## Usage
 
-First, you need to use the Growatt WiFi module administrative interface, go to the "Advanced Setting" and change "Server Address" (default: server.growatt.com) to the name or ip of the system running the
-your server.
+First, you need to use the Growatt WiFi module administrative interface, go to the "Advanced Setting" and change "Server Address" (default: server.growatt.com) to the name or ip of the system running this script. You will also need to configure the computer running this script with a static IP address.
 
 See [AP-Mode manual](https://static1.squarespace.com/static/524c5ffae4b0bcb12e072ee1/t/5e1e87d8348d0b3315f2dc90/1579059163523/Growatt+ShineWiFi-S+OR+X+WIFI+setup+through+AP+mode.pdf)
+
+Start the script:
 
 ```bash
 perl growatt_server.pl
 ```
-Finally, you need to configure the ShineWifi-X module to communicate with the computer running this script. You will also need to configure the computer running this script with a static IP address.
 
+For debugging add --debug=N (N: 1-3) parameter:
+
+```bash
+perl growatt_server.pl --debug=3
+```
 
 ## Daemon
 
