@@ -5,7 +5,7 @@ Growatt-server is a Perl script used for [Growatt](https://www.ginverter.com/) s
 ## Installation
 
 ```bash
-git clone https://github.com/knowthelist/ftui/Growatt-server.git
+git clone https://github.com/knowthelist/Growatt-server.git
 cd Growatt-server
 ```
 If not done before, you need to install some modules
