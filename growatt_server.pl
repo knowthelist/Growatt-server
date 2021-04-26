@@ -8,7 +8,7 @@
 #
 # Copyright (c) 2021 Mario Stephan <mstephan@shared-files.de>
 # Under MIT License (http://www.opensource.org/licenses/mit-license.php)
-# https://github.com/knowthelist/ftui/Growatt-server
+# https://github.com/knowthelist/Growatt-server
 #
 ################################################################
 #
@@ -221,9 +221,9 @@ sub split_message {
 
         my ( $protocol_id, $size ) = unpack( "x2nn", $$bufref );
 
-        print( "split_message", "\t", "protocol_id", $protocol_id, "\n" )
+        print( "split_message", "\t", "protocol_id", "\t", $protocol_id, "\n" )
           if $debug > 3;
-        print( "split_message", "\t", "message size", $size, "\n" )
+        print( "split_message", "\t", "message size", "\t", $size, "\n" )
           if $debug > 3;
 
         if ( $protocol_id >= 5 ) {
@@ -272,6 +272,9 @@ sub decode_message {
         print("crc is not ok, skip frame\n");
         return;
     }
+
+    print( "decode_message", "\t", "unit_id", "\t", $unit_id, "\n" )
+      if $debug > 3;
 
     return {
         msg_id      => $msg_id,
@@ -400,13 +403,13 @@ sub decode_ping_request {
 
 sub decode_announce_request {
     my ($message) = @_;
-    my ( $serial, $inverter ) = unpack( "a10 x20 a10", $message->{data} );
-    my ( $year, $month, $day ) =
-      unpack( "nnn", substr( $message->{data}, 161 ) );
-    my ( $hour, $min, $sec ) = unpack( "nnn", substr( $message->{data}, 167 ) );
+    my ( $data, $proto ) = ( $message->{data}, $message->{protocol_id} );
+    my ($serial)   = unpack( "a10", $data );
+    my ($inverter) = unpack( "a10", substr( $data, $proto < 6 ? 10 : 30 ) );
+    my ( $year, $month, $day ) = unpack( "nnn", substr( $data, $proto < 6 ? 125 : 161 ) );
+    my ( $hour, $min, $sec )   = unpack( "nnn", substr( $data, $proto < 6 ? 131 : 167 ) );
     my @tm = localtime(time);
-    my $now =
-      timelocal( $tm[0], $tm[1], $tm[2], $tm[3], $tm[4], 1900 + $tm[5] );
+    my $now = timelocal( $tm[0], $tm[1], $tm[2], $tm[3], $tm[4], 1900 + $tm[5] );
     my $time = timelocal( $sec, $min, $hour, $day, $month - 1, $year );
 
     return {
@@ -418,8 +421,9 @@ sub decode_announce_request {
 
 sub decode_query_request {
     my ($message) = @_;
-    my ( $serial, $config_id, $config_value ) =
-      unpack( "a10 x21 C x2 a*", $message->{data} );
+    my ( $data, $proto ) = ( $message->{data}, $message->{protocol_id} );
+    my ( $serial) = unpack( "a10", $data );
+    my ( $config_id, $config_value ) = unpack( "C x2 a*", substr( $data, $proto < 6 ? 11 : 31 ) );
 
     return {
         serial       => $serial,
@@ -430,19 +434,18 @@ sub decode_query_request {
 
 sub decode_data_request {
     my ($message) = @_;
-
-    my ( $serial, $inverter ) = unpack( "a10 x20 a10", $message->{data} );
-    my ( $year, $month, $day ) =
-      unpack( "CCC", substr( $message->{data}, 60 ) );
-    my ( $hour, $min, $sec ) = unpack( "CCC", substr( $message->{data}, 63 ) );
-    my ($Ppv) = unpack( "N", substr( $message->{data}, 73 ) );
-    my ( $Vpv1, $Ipv1, $Ppv1 ) =
-      unpack( "nnN", substr( $message->{data}, 77 ) );
-    my ( $Pac, $Fac ) = unpack( "Nn", substr( $message->{data}, 117 ) );
-    my ( $Vac1, $Iac1, $Pac1 ) =
-      unpack( "nnN", substr( $message->{data}, 123 ) );
-    my ($Eac_today) = unpack( "N", substr( $message->{data}, 169 ) );
-    my ($Eac_total) = unpack( "N", substr( $message->{data}, 177 ) );
+    my ( $data, $proto ) = ( $message->{data}, $message->{protocol_id} );
+    my $offset     = $proto < 6 ? -40 : 0;
+    my ( $serial )   = unpack( "a10", $data );
+    my ( $inverter ) = unpack( "a10", substr( $data, $proto < 6 ? 10 : 30 ) );
+    my ( $year, $month, $day ) = unpack( "CCC", substr( $data, 60 + $offset ) );
+    my ( $hour, $min, $sec ) = unpack( "CCC", substr( $data, 63 + $offset ) );
+    my ( $Ppv ) = unpack( "N", substr( $data, 73 + $offset ) );
+    my ( $Vpv1, $Ipv1, $Ppv1 ) = unpack( "nnN", substr( $message->{data}, 77 + $offset ) );
+    my ( $Pac, $Fac ) = unpack( "Nn", substr( $data, 117 + $offset ) );
+    my ( $Vac1, $Iac1, $Pac1 ) = unpack( "nnN", substr( $data, 123 + $offset ) );
+    my ( $Eac_today ) = unpack( "N", substr( $data, 169 + $offset ) );
+    my ( $Eac_total ) = unpack( "N", substr( $data, 177 + $offset ) );
 
     return {
         serial    => $serial,

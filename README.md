@@ -28,7 +28,7 @@ Start the script:
 perl growatt_server.pl
 ```
 
-For debugging add --debug=N (N: 1-3) parameter:
+For debugging add --debug=N (N: 1-4) parameter:
 
 ```bash
 perl growatt_server.pl --debug=3
@@ -39,6 +39,7 @@ perl growatt_server.pl --debug=3
 To run the script 24x7 as a service, you can use the growattserver.service config for systemd.
 
 ```bash
+sudo cp growatt_server.pl /usr/local/bin/
 sudo cp growattserver.service /etc/systemd/system/
 sudo systemctl enable growattserver
 sudo systemctl start growattserver
