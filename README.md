@@ -47,8 +47,8 @@ sudo systemctl start growattserver
 
 ## Tested devices
 
-Growatt MIC-600TL-X Inverter
-Growatt ShineWiFI-X - WiFi-Stick.
+- Growatt MIC-600TL-X Inverter
+- Growatt ShineWiFI-X - WiFi-Stick.
 
 ## License
 This project is licensed under [MIT](http://www.opensource.org/licenses/mit-license.php).
