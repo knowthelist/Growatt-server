@@ -14,6 +14,7 @@ If not done before, you need to install some modules
 sudo cpanm Net::MQTT::Simple
 sudo cpanm Net::MQTT::Constants
 sudo cpanm Data::Hexify
+sudo cpanm Proc::Daemon
 ```
 
 ## Usage
